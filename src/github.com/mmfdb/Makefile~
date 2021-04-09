@@ -1,0 +1,12 @@
+
+
+
+
+build:
+	go build -o -v
+
+
+test:
+	go test -v db/db_test.go
+
+clean:
