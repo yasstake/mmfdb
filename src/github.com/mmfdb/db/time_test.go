@@ -8,12 +8,12 @@ import (
 func TestUnix1(t *testing.T) {
 	ms := TimeMs(59999)
 	unix := ms.Unix()
-	fmt.Println(unix, 59999)
+	fmt.Println(unix, 59999, ms.str())
 }
 func TestUnix2(t *testing.T) {
 	ms := TimeMs(60001)
 	unix := ms.Unix()
-	fmt.Println(unix, 60001)
+	fmt.Println(unix, 60001, ms.str())
 }
 
 func TestMinMs(t *testing.T) {

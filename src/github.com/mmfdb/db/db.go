@@ -94,7 +94,7 @@ func (board Board) load(stream io.ReadCloser, start_price int) Board {
 }
 
 type Record struct {
-	time  uint64
+	time  TimeMs
 	price int
 	vol   int
 }
@@ -105,7 +105,7 @@ type recordBuf struct {
 	Vol   uint32
 }
 
-func (c Record) save(stream io.WriteCloser, start_time uint64, start_price int) {
+func (c Record) save(stream io.WriteCloser, start_time TimeMs, start_price int) {
 	var buf recordBuf
 
 	buf.Time = uint16(c.time - start_time)
@@ -114,11 +114,11 @@ func (c Record) save(stream io.WriteCloser, start_time uint64, start_price int) 
 	binary.Write(stream, binary.LittleEndian, &buf)
 }
 
-func (c Record) load(stream io.ReadCloser, start_time uint64, start_price int) Record {
+func (c Record) load(stream io.ReadCloser, start_time TimeMs, start_price int) Record {
 	buf := recordBuf{}
 	binary.Read(stream, binary.LittleEndian, &buf)
 
-	c.time = uint64(buf.Time) + start_time
+	c.time = TimeMs(buf.Time) + start_time
 	c.price = int(buf.Price) + start_price
 	c.vol = int(buf.Vol)
 
@@ -127,7 +127,7 @@ func (c Record) load(stream io.ReadCloser, start_time uint64, start_price int) R
 
 type Records []Record
 
-func (rec Records) save(stream io.WriteCloser, start_time uint64, start_price int) {
+func (rec Records) save(stream io.WriteCloser, start_time TimeMs, start_price int) {
 	len16 := uint16(len(rec))
 	binary.Write(stream, binary.LittleEndian, &len16)
 
@@ -136,7 +136,7 @@ func (rec Records) save(stream io.WriteCloser, start_time uint64, start_price in
 	}
 }
 
-func (rec Records) load(stream io.ReadCloser, start_time uint64, start_price int) Records {
+func (rec Records) load(stream io.ReadCloser, start_time TimeMs, start_price int) Records {
 	var len16 uint16
 	binary.Read(stream, binary.LittleEndian, &len16)
 	len := int(len16)
@@ -156,12 +156,14 @@ func (c *Records) init() {
 }
 
 type TransactionLog struct {
-	start_time  uint64
-	end_time    uint64
+	start_time  TimeMs
+	end_time    TimeMs
 	start_price int
 	bit         Board
+	bit_start   Board
 	bit_delta   Records
 	ask         Board
+	ask_start   Board
 	ask_delta   Records
 	buy         Records
 	sell        Records
@@ -169,7 +171,9 @@ type TransactionLog struct {
 
 func (c *(TransactionLog)) init() {
 	c.bit.init()
+	c.bit_start.init()
 	c.ask.init()
+	c.ask_start.init()
 	c.start_time = 0
 	c.end_time = 0
 	c.start_price = 0
@@ -181,8 +185,8 @@ func (c *TransactionLog) reset() {
 	c.start_price = 0
 	c.bit_delta.init()
 	c.ask_delta.init()
-	c.buy.init()
-	c.sell.init()
+	c.bit_start = c.bit.copy()
+	c.ask_start = c.ask.copy()
 }
 
 func (c *TransactionLog) save(stream io.WriteCloser) {
@@ -216,7 +220,7 @@ func (c TransactionLog) load(stream io.ReadCloser) TransactionLog {
 	// start_time     int
 	var start_time uint64
 	binary.Read(stream, binary.LittleEndian, &start_time)
-	c.start_time = start_time
+	c.start_time = TimeMs(start_time)
 
 	// start_price       int
 	start_price := uint64(c.start_price)
@@ -243,7 +247,7 @@ func (c TransactionLog) load(stream io.ReadCloser) TransactionLog {
 
 type TransactionRecord struct {
 	action int
-	time   uint64
+	time   TimeMs
 	seq    int
 	price  int
 	vol    int
@@ -255,7 +259,7 @@ func (rec TransactionRecord) to_string() string {
 	return s
 }
 
-func (c *TransactionLog) set(action int, time uint64, seq int, price int, vol int) {
+func (c *TransactionLog) set(action int, time TimeMs, seq int, price int, vol int) {
 	if c.start_time == 0 {
 		c.start_time = time
 	}
@@ -304,8 +308,8 @@ func load_log(file string) TransactionLog {
 			case 0: // Action
 				record.action, _ = strconv.Atoi(v)
 			case 1: // Time
-				record.time, _ = strconv.ParseUint(v, 10, 64)
-				record.time = record.time / 1000 // convert ns to ms
+				t, _ := strconv.ParseUint(v, 10, 64)
+				record.time = TimeMs(t / 1000) // convert ns to ms
 			case 2: // Seq
 				record.seq, _ = strconv.Atoi(v)
 			case 3: // Price
@@ -318,25 +322,16 @@ func load_log(file string) TransactionLog {
 		if record.action == UPDATE_BUY || record.action == UPDATE_SELL {
 			//min := int64(record.time / 1000)
 			//min = int64(min / 60)
-			sec := int64(record.time / 1000)
-			s := time.Unix(sec, int64(record.time)-sec*1000000)
-			min := s.Minute()
+			hour, min, sec := record.time.HHMMSS()
 
 			if min != last_min {
-				if last_min == 0 {
-					fmt.Println("ResetLog", min)
-					// reset log
-				} else {
-					fmt.Println("-----", min)
-					// save log
-					// reset log
-
+				if last_min != 0 {
+					// Save
 				}
-
+				transaction.reset()
 				last_min = min
-				sec := int64(record.time / 1000)
-				s := time.Unix(sec, int64(record.time)-sec*1000000)
-				fmt.Println(s)
+
+				fmt.Println(hour, min, sec, record.time.str(), row)
 			}
 		}
 

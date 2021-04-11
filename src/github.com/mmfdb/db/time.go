@@ -18,6 +18,11 @@ func (ms TimeMs) Min() int {
 	return min
 }
 
+func (ms TimeMs) str() string {
+	s := ms.Unix()
+	return s.String()
+}
+
 func (ms TimeMs) YYMMDD() (int, int, int) {
 	s := ms.Unix()
 
