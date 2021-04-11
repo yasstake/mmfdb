@@ -7,14 +7,51 @@ import (
 )
 
 func TestLoad(t *testing.T) {
-	load("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
+	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
 
 	fmt.Println("hello")
+
+	wf, _ := os.Create("/tmp/save_transaction.bin")
+	transaction.save(wf)
+	wf.Close()
+}
+
+func TestLoadBig(t *testing.T) {
+	transaction := load_log("../../../../DATA/BB2-2021-02-20T23-45-52.008914Z.log.gz")
+
+	fmt.Println("hello")
+
+	wf, _ := os.Create("/tmp/save_transactionbig.bin")
+	transaction.save(wf)
+	wf.Close()
+}
+
+func TestLoadBigFrombin(t *testing.T) {
+	wf, _ := os.Open("/tmp/save_transactionbig.bin")
+	var transaction TransactionLog
+	transaction = transaction.load(wf)
+	wf.Close()
+}
+
+func TestSaveAndLoad(t *testing.T) {
+	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
+
+	fmt.Println("hello")
+
+	wf, _ := os.Create("/tmp/save_transaction.bin")
+	transaction.save(wf)
+	wf.Close()
+
+	wf, _ = os.Open("/tmp/save_transaction.bin")
+	var transaction2 TransactionLog
+	transaction2 = transaction2.load(wf)
+
 }
 
 /*
 func TestLoad2(t *testing.T) {
-	transaction := load("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
+
+	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
 
 	stdoutDumper := hex.Dumper(os.Stdout)
 	defer stdoutDumper.Close()
@@ -48,7 +85,7 @@ func TestDump(t *testing.T) {
 
 /*
 func TestSaveRecord(t *testing.T) {
-	transaction := load("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
+	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
 
 	stdoutDumper := hex.Dumper(os.Stdout)
 	defer stdoutDumper.Close()
@@ -79,4 +116,62 @@ func TestSaveLoadRecord(t *testing.T) {
 	fmt.Println(rec2.price)
 	fmt.Println(rec2.time)
 	fmt.Println(rec2.vol)
+}
+
+func TestSaveLoadRecords(t *testing.T) {
+	rec1 := Record{time: 10, price: 8, vol: 20}
+	rec2 := Record{time: 11, price: 9, vol: 21}
+	rec3 := Record{time: 12, price: 10, vol: 22}
+	rec4 := Record{time: 13, price: 11, vol: 23}
+
+	var rec Records
+
+	rec = append(rec, rec1)
+	rec = append(rec, rec2)
+	rec = append(rec, rec3)
+	rec = append(rec, rec4)
+
+	wf, _ := os.Create("/tmp/test2.bin")
+	rec.save(wf, 100, 100)
+	wf.Close()
+
+	wf2, _ := os.Open("/tmp/test2.bin")
+	var r2 Records
+	r2 = r2.load(wf2, 100, 100)
+	wf2.Close()
+
+	fmt.Println(r2)
+}
+
+func TestCopyBoard(t *testing.T) {
+	var board Board
+	board.init()
+	board.set(100, 100)
+	board.set(101, 101)
+	board.set(102, 102)
+	board.set(104, 104)
+	fmt.Println("org", board)
+
+	copy_board := board.copy()
+	fmt.Println("copy", copy_board)
+}
+
+func TestSaveLoadBoards(t *testing.T) {
+	var board Board
+	board.init()
+	board.set(100, 100)
+	board.set(101, 101)
+	board.set(102, 102)
+	board.set(104, 104)
+
+	wf, _ := os.Create("/tmp/test3.bin")
+	board.save(wf, 10)
+	wf.Close()
+
+	wf2, _ := os.Open("/tmp/test3.bin")
+	var b Board
+	b = b.load(wf2, 10)
+	wf2.Close()
+
+	fmt.Println(b)
 }
