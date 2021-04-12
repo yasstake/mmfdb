@@ -6,24 +6,26 @@ import (
 	"testing"
 )
 
+/*
 func TestLoad(t *testing.T) {
-	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
-
-	fmt.Println("hello")
-
-	wf, _ := os.Create("/tmp/save_transaction.bin")
-	transaction.save(wf)
-	wf.Close()
+	//transaction :=
+	load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
+}
+*/
+func TestLoadBig(t *testing.T) {
+	//transaction :=
+	load_log("../../../../DATA/BB2-2021-02-20T23-45-52.008914Z.log.gz")
 }
 
-func TestLoadBig(t *testing.T) {
-	transaction := load_log("../../../../DATA/BB2-2021-02-20T23-45-52.008914Z.log.gz")
+/*
+func TestLoadMiddle(t *testing.T) {
+	//transaction :=
+	load_log("../../../../DATA/BB2-2021-01-27T20-44-18.729622Z.log.gz")
+}
 
-	fmt.Println("hello")
-
-	wf, _ := os.Create("/tmp/save_transactionbig.bin")
-	transaction.save(wf)
-	wf.Close()
+func TestLoadMiddleBB(t *testing.T) {
+	//transaction :=
+	load_log("../../../../DATA/BB-2020-05-31T16-11-07.927390Z.log.gz")
 }
 
 func TestLoadBigFrombin(t *testing.T) {
@@ -32,7 +34,8 @@ func TestLoadBigFrombin(t *testing.T) {
 	transaction = transaction.load(wf)
 	wf.Close()
 }
-
+*/
+/*
 func TestSaveAndLoad(t *testing.T) {
 	transaction := load_log("../../../../DATA/BB2-2021-02-24T23-05-04.750033Z.log.gz")
 
@@ -46,7 +49,9 @@ func TestSaveAndLoad(t *testing.T) {
 	var transaction2 TransactionLog
 	transaction2 = transaction2.load(wf)
 
+	transaction2.dump_to_directory("/tmp/")
 }
+*/
 
 /*
 func TestLoad2(t *testing.T) {

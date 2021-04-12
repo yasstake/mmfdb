@@ -66,8 +66,8 @@ type boardBuf struct {
 }
 
 func (board Board) save(stream io.WriteCloser, start_price int) {
-	len := uint16(len(board.order))
-	binary.Write(stream, binary.LittleEndian, &len)
+	length := uint16(len(board.order))
+	binary.Write(stream, binary.LittleEndian, &length)
 
 	var buf boardBuf
 
@@ -91,6 +91,10 @@ func (board Board) load(stream io.ReadCloser, start_price int) Board {
 		board.order[int(buf.Price)+start_price] = int(buf.Vol)
 	}
 	return board
+}
+
+func (board Board) depth() int {
+	return len(board.order)
 }
 
 type Record struct {
@@ -169,7 +173,7 @@ type TransactionLog struct {
 	sell        Records
 }
 
-func (c *(TransactionLog)) init() {
+func (c *TransactionLog) init() {
 	c.bit.init()
 	c.bit_start.init()
 	c.ask.init()
@@ -193,27 +197,39 @@ func (c *TransactionLog) save(stream io.WriteCloser) {
 	// start_time     int
 	start := uint64(c.start_time)
 	binary.Write(stream, binary.LittleEndian, &start)
-
 	// start_price       int
 	start_price := uint64(c.start_price)
 	binary.Write(stream, binary.LittleEndian, &start_price)
-
 	// bit       Board
-	c.bit.save(stream, c.start_price)
-
+	c.bit_start.save(stream, c.start_price)
 	// bit_delta []Record
 	c.bit_delta.save(stream, c.start_time, c.start_price)
-
 	// ask       Board
-	c.ask.save(stream, c.start_price)
+	c.ask_start.save(stream, c.start_price)
 	// ask_delta []Record
-
 	c.ask_delta.save(stream, c.start_time, c.start_price)
 	// buy       []Record
-
 	c.buy.save(stream, c.start_time, c.start_price)
 	// sell      []Record
 	c.sell.save(stream, c.start_time, c.start_price)
+}
+
+func (c TransactionLog) dump_to_directory(basepath string) {
+	yy, mm, dd := c.start_time.YYMMDD()
+	h, m, s := c.start_time.HHMMSS()
+	_, em, es := c.end_time.HHMMSS()
+	if s != 0 {
+		fmt.Println("Skip", c.start_time.str(), c.end_time.str())
+		return
+	}
+
+	file_name := fmt.Sprintf("%s/%02d-%02d-%02d-%02d-%02d-%02d-%02d-%02d",
+		basepath, yy, mm, dd, h, m, s, em, es)
+	fmt.Println(file_name, "DEPTH", c.bit.depth(), c.ask.depth(),
+		len(c.bit_delta), len(c.ask_delta), c.bit_start.depth(), c.ask_start.depth())
+	fw, _ := os.Create(file_name)
+	defer fw.Close()
+	c.save(fw)
 }
 
 func (c TransactionLog) load(stream io.ReadCloser) TransactionLog {
@@ -267,12 +283,16 @@ func (c *TransactionLog) set(action int, time TimeMs, seq int, price int, vol in
 
 	switch action {
 	case PARTIAL:
-		c.init()
+		fmt.Println("----PARTIAL-------")
+		c.bit.init()
+		c.ask.init()
 	case UPDATE_BUY:
 		c.bit.set(price, vol)
+		//fmt.Println("BIT", c.bit.depth())
 		c.bit_delta = append(c.bit_delta, Record{time: time, price: price, vol: vol})
 	case UPDATE_SELL:
-		c.ask.set(price, price)
+		c.ask.set(price, vol)
+		//fmt.Println("ask", c.ask.depth())
 		c.ask_delta = append(c.ask_delta, Record{time: time, price: price, vol: vol})
 	case TRADE_BUY:
 		c.buy = append(c.buy, Record{time: time, price: price, vol: vol})
@@ -319,14 +339,14 @@ func load_log(file string) TransactionLog {
 			}
 		}
 
-		if record.action == UPDATE_BUY || record.action == UPDATE_SELL {
+		if record.action == UPDATE_BUY /*|| record.action == UPDATE_SELL*/ {
 			//min := int64(record.time / 1000)
 			//min = int64(min / 60)
 			hour, min, sec := record.time.HHMMSS()
 
 			if min != last_min {
-				if last_min != 0 {
-					// Save
+				if last_min != 0 && sec == 0 {
+					transaction.dump_to_directory("/tmp") // Save
 				}
 				transaction.reset()
 				last_min = min
