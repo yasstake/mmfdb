@@ -32,6 +32,8 @@ const OPEN_INTEREST = 10
 // action, time(next funding), 0, rate,, checksum
 const FUNDING_RATE = 11
 
+var DB_ROOT = "./LOG"
+
 type Board struct {
 	order map[int]int
 }
@@ -215,21 +217,17 @@ func (c *TransactionLog) save(stream io.WriteCloser) {
 }
 
 func (c TransactionLog) dump_to_directory(basepath string) {
-	yy, mm, dd := c.start_time.YYMMDD()
-	h, m, s := c.start_time.HHMMSS()
-	_, em, es := c.end_time.HHMMSS()
-	if s != 0 {
-		fmt.Println("Skip", c.start_time.str(), c.end_time.str())
-		return
-	}
+	dir_name, file_name := make_path(c.start_time)
 
-	file_name := fmt.Sprintf("%s/%02d-%02d-%02d-%02d-%02d-%02d-%02d-%02d",
-		basepath, yy, mm, dd, h, m, s, em, es)
-	fmt.Println(file_name, "DEPTH", c.bit.depth(), c.ask.depth(),
-		len(c.bit_delta), len(c.ask_delta), c.bit_start.depth(), c.ask_start.depth())
-	fw, _ := os.Create(file_name)
+	dir_path := basepath + string(os.PathSeparator) + dir_name
+	os.MkdirAll(dir_path, 0777)
+
+	fw, _ := os.Create(dir_path + string(os.PathSeparator) + file_name)
 	defer fw.Close()
-	c.save(fw)
+	gw := gzip.NewWriter(fw)
+	defer gw.Flush()
+	defer gw.Close()
+	c.save(gw)
 }
 
 func (c TransactionLog) load(stream io.ReadCloser) TransactionLog {
@@ -288,18 +286,35 @@ func (c *TransactionLog) set(action int, time TimeMs, seq int, price int, vol in
 		c.ask.init()
 	case UPDATE_BUY:
 		c.bit.set(price, vol)
-		//fmt.Println("BIT", c.bit.depth())
 		c.bit_delta = append(c.bit_delta, Record{time: time, price: price, vol: vol})
 	case UPDATE_SELL:
 		c.ask.set(price, vol)
-		//fmt.Println("ask", c.ask.depth())
 		c.ask_delta = append(c.ask_delta, Record{time: time, price: price, vol: vol})
 	case TRADE_BUY:
 		c.buy = append(c.buy, Record{time: time, price: price, vol: vol})
+	case TRADE_BUY_LIQUID:
+		c.buy = append(c.buy, Record{time: time, price: price, vol: vol})
 	case TRADE_SELL:
 		c.sell = append(c.sell, Record{time: time, price: price, vol: vol})
+	case TRADE_SELL_LIQUID:
+		c.sell = append(c.sell, Record{time: time, price: price, vol: vol})
 	}
+
 }
+
+/*
+func load_log(file string) {
+	var transaction TransactionLog
+
+	wf, _ := os.Open(file)
+
+	if strings.HasSuffix(file, ".gz") {
+		wf, _ := gzip.NewReader(wf)
+	}
+
+	transaction = transaction.load(wf)
+}
+*/
 
 func load_log(file string) TransactionLog {
 	f, err := os.Open(file)
@@ -346,7 +361,10 @@ func load_log(file string) TransactionLog {
 
 			if min != last_min {
 				if last_min != 0 && sec == 0 {
-					transaction.dump_to_directory("/tmp") // Save
+					_, _, ss := transaction.start_time.HHMMSS()
+					if ss == 0 {
+						transaction.dump_to_directory(DB_ROOT) // Save
+					}
 				}
 				transaction.reset()
 				last_min = min

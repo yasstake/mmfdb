@@ -10,3 +10,5 @@ test:
 	go test -v ./...
 
 clean:
+	rm -rf ./db/LOG
+
