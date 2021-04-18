@@ -48,6 +48,8 @@ func TestAppendTimeChunk(t *testing.T) {
 	t7 := time.Date(2001, 1, 1, 1, 9, 0, 0, time.UTC)
 
 	org := append_time_chunks(nil, t1)
+	fmt.Println(org)
+
 	org = append_time_chunks(org, t5)
 	fmt.Println(org)
 

@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// make log file path from Time
 func make_path(time TimeMs) (dir, path string) {
 	yy, mm, dd := time.YYMMDD()
 	h, m, _ := time.HHMMSS()
@@ -85,33 +86,6 @@ type TimeFrame struct {
 	end   time.Time
 }
 
-// Append time chunks. Add new time to old TimeFrame
-func append_time_chunks(org []TimeFrame, now time.Time) []TimeFrame {
-	if org == nil {
-		org = []TimeFrame{{now, now}}
-		return org
-	}
-
-	end := org[len(org)-1].end
-	diff := now.Sub(end)
-
-	min := diff.Seconds()
-
-	switch {
-	case min < 0:
-		fmt.Println("ERROR in append_time_chunks")
-	case min <= 120:
-		pos := len(org) - 1
-		org[pos].end = now
-	case 120 < min:
-		org = append(org, TimeFrame{now, now})
-	default:
-		fmt.Println("Unexpected case append_time_chunks")
-	}
-
-	return org
-}
-
 // Search DB directory and find time frame series chunks
 // [{Start, end} {start, end},,,,,]
 // Direcotry
@@ -135,8 +109,9 @@ func time_chunks(base_path string) (times []TimeFrame) {
 	dirs = sort.StringSlice(dirs)
 
 	// Open each log dir and sort each logs
-	var file_paths []string
 	for _, dir_path := range dirs {
+		var file_paths []string
+
 		files, err := ioutil.ReadDir(dir_path)
 		if err != nil {
 			fmt.Println("Error")
@@ -146,6 +121,7 @@ func time_chunks(base_path string) (times []TimeFrame) {
 			name := file.Name()
 			file_paths = append(file_paths, filepath.Join(dir_path, name))
 		}
+
 		file_paths = sort.StringSlice(file_paths)
 
 		for _, file := range file_paths {
@@ -157,24 +133,29 @@ func time_chunks(base_path string) (times []TimeFrame) {
 	return times
 }
 
-// (base_dir)/yyyy-mm-dd/hh-mm.log.gz
-//
-//
-func start_end_time(base_path string) (start int, end int) {
-	files, err := ioutil.ReadDir(base_path)
-
-	if err != nil {
-		fmt.Println("Error")
+// Append time chunks. Add new time to old TimeFrame
+func append_time_chunks(org []TimeFrame, now time.Time) []TimeFrame {
+	if org == nil {
+		org = []TimeFrame{{now, now}}
+		return org
 	}
 
-	var paths []string
-	for _, file := range files {
-		if file.IsDir() {
-			paths = append(paths, file_list(filepath.Join(base_path, file.Name()))...)
-		} else {
-			paths = append(paths, filepath.Join(base_path, file.Name()))
-		}
+	end := org[len(org)-1].end
+	diff := now.Sub(end)
+
+	min := diff.Seconds()
+
+	switch {
+	case min < 0:
+		fmt.Println("ERROR in append_time_chunks", now.String(), end.String(), diff)
+	case min <= 120+5:
+		pos := len(org) - 1
+		org[pos].end = now
+	case 120 < min:
+		org = append(org, TimeFrame{now, now})
+	default:
+		fmt.Println("Unexpected case append_time_chunks")
 	}
 
-	return start, end
+	return org
 }
