@@ -331,7 +331,7 @@ func load_log(file string) TransactionLog {
 	transaction.init()
 
 	var record TransactionRecord
-	last_min := 0
+	last_min := -1
 
 	for {
 		row, err := r.Read()
@@ -360,9 +360,9 @@ func load_log(file string) TransactionLog {
 			hour, min, sec := record.time.HHMMSS()
 
 			if min != last_min {
-				if last_min != 0 && sec == 0 {
+				if last_min != -1 && sec == 0 {
 					_, _, ss := transaction.start_time.HHMMSS()
-					if ss == 0 {
+					if ss < 1 {
 						transaction.dump_to_directory(DB_ROOT) // Save
 					}
 				}

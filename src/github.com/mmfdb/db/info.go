@@ -133,6 +133,8 @@ func time_chunks(base_path string) (times []TimeFrame) {
 	return times
 }
 
+const TIME_GAP = 120 + 5
+
 // Append time chunks. Add new time to old TimeFrame
 func append_time_chunks(org []TimeFrame, now time.Time) []TimeFrame {
 	if org == nil {
@@ -148,10 +150,10 @@ func append_time_chunks(org []TimeFrame, now time.Time) []TimeFrame {
 	switch {
 	case min < 0:
 		fmt.Println("ERROR in append_time_chunks", now.String(), end.String(), diff)
-	case min <= 120+5:
+	case min <= TIME_GAP:
 		pos := len(org) - 1
 		org[pos].end = now
-	case 120 < min:
+	case TIME_GAP < min:
 		org = append(org, TimeFrame{now, now})
 	default:
 		fmt.Println("Unexpected case append_time_chunks")
