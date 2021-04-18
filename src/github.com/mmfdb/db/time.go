@@ -42,3 +42,8 @@ func (ms TimeMs) HHMMSS() (int, int, int) {
 
 	return hh, mm, ss
 }
+
+func YYMMDDhms(yy, mm, dd, h, m, s int) time.Time {
+	t := time.Date(yy, time.Month(mm), dd, h, m, s, 0, time.UTC)
+	return t
+}
