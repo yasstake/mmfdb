@@ -54,3 +54,10 @@ func TestHHMMSS(t *testing.T) {
 		t.Error(hh, mm, ss)
 	}
 }
+
+func TestTimeMsMs(t *testing.T) {
+	time := YYMMDDhms(2001, 1, 1, 1, 1, 1)
+	ms := to_time_ms(time)
+	yy, mm, dd := ms.YYMMDD()
+	fmt.Println(yy, mm, dd)
+}

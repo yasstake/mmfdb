@@ -137,15 +137,21 @@ func TestSaveLoadRecords(t *testing.T) {
 	rec = append(rec, rec4)
 
 	wf, _ := os.Create("/tmp/test2.bin")
-	rec.save(wf, 100, 100)
+	rec.save(wf, 1, 2)
 	wf.Close()
 
 	wf2, _ := os.Open("/tmp/test2.bin")
 	var r2 Records
-	r2 = r2.load(wf2, 100, 100)
+	r2 = r2.load(wf2, 1, 2)
 	wf2.Close()
 
 	fmt.Println(r2)
+
+	if rec[0].price != r2[0].price ||
+		rec[0].time != r2[0].time ||
+		rec[0].vol != r2[0].vol {
+		t.Error("Load Does not match")
+	}
 }
 
 func TestCopyBoard(t *testing.T) {
@@ -179,4 +185,10 @@ func TestSaveLoadBoards(t *testing.T) {
 	wf2.Close()
 
 	fmt.Println(b)
+}
+
+func TestLoadSimpleFile(t *testing.T) {
+	transaction := load_log("../../../../DATA/bb2.log")
+
+	fmt.Println(transaction)
 }

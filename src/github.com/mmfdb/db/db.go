@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,16 @@ const OPEN_INTEREST = 10
 const FUNDING_RATE = 11
 
 var DB_ROOT = "./LOG"
+
+func open_gzip(file string) io.ReadCloser {
+	f, err := os.Open(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	gzipreader, _ := gzip.NewReader(f)
+
+	return gzipreader
+}
 
 type Board struct {
 	order map[int]int
@@ -67,20 +78,20 @@ type boardBuf struct {
 	Vol   uint32
 }
 
-func (board Board) save(stream io.WriteCloser, start_price int) {
+func (board Board) save(stream io.WriteCloser, start_price int64) {
 	length := uint16(len(board.order))
 	binary.Write(stream, binary.LittleEndian, &length)
 
 	var buf boardBuf
 
 	for price, _ := range board.order {
-		buf.Price = int16(price - start_price)
+		buf.Price = int16(int64(price) - start_price)
 		buf.Vol = uint32(board.order[price])
 		binary.Write(stream, binary.LittleEndian, &buf)
 	}
 }
 
-func (board Board) load(stream io.ReadCloser, start_price int) Board {
+func (board Board) load(stream io.ReadCloser, start_price int64) Board {
 	var len16 uint16
 	binary.Read(stream, binary.LittleEndian, &len16)
 	len := int(len16)
@@ -90,7 +101,7 @@ func (board Board) load(stream io.ReadCloser, start_price int) Board {
 	board.init()
 	for i := 0; i < len; i++ {
 		binary.Read(stream, binary.LittleEndian, &buf)
-		board.order[int(buf.Price)+start_price] = int(buf.Vol)
+		board.order[int(int64(buf.Price)+int64(start_price))] = int(buf.Vol)
 	}
 	return board
 }
@@ -101,8 +112,8 @@ func (board Board) depth() int {
 
 type Record struct {
 	time  TimeMs
-	price int
-	vol   int
+	price uint64
+	vol   uint64
 }
 
 type recordBuf struct {
@@ -111,38 +122,38 @@ type recordBuf struct {
 	Vol   uint32
 }
 
-func (c Record) save(stream io.WriteCloser, start_time TimeMs, start_price int) {
+func (c Record) save(stream io.WriteCloser, start_time TimeMs, start_price int64) {
 	var buf recordBuf
 
 	buf.Time = uint16(c.time - start_time)
-	buf.Price = int16(c.price - start_price)
+	buf.Price = int16(int64(c.price) - int64(start_price))
 	buf.Vol = uint32(c.vol)
 	binary.Write(stream, binary.LittleEndian, &buf)
 }
 
-func (c Record) load(stream io.ReadCloser, start_time TimeMs, start_price int) Record {
+func (c Record) load(stream io.ReadCloser, start_time TimeMs, start_price int64) Record {
 	buf := recordBuf{}
 	binary.Read(stream, binary.LittleEndian, &buf)
 
-	c.time = TimeMs(buf.Time) + start_time
-	c.price = int(buf.Price) + start_price
-	c.vol = int(buf.Vol)
+	c.time = TimeMs(uint64(buf.Time) + uint64(start_time))
+	c.price = uint64(int64(buf.Price) + int64(start_price))
+	c.vol = uint64(buf.Vol)
 
 	return c
 }
 
 type Records []Record
 
-func (rec Records) save(stream io.WriteCloser, start_time TimeMs, start_price int) {
+func (rec Records) save(stream io.WriteCloser, start_time TimeMs, start_price int64) {
 	len16 := uint16(len(rec))
 	binary.Write(stream, binary.LittleEndian, &len16)
 
 	for _, r := range rec {
-		r.save(stream, start_time, int(start_price))
+		r.save(stream, start_time, int64(start_price))
 	}
 }
 
-func (rec Records) load(stream io.ReadCloser, start_time TimeMs, start_price int) Records {
+func (rec Records) load(stream io.ReadCloser, start_time TimeMs, start_price int64) Records {
 	var len16 uint16
 	binary.Read(stream, binary.LittleEndian, &len16)
 	len := int(len16)
@@ -162,17 +173,18 @@ func (c *Records) init() {
 }
 
 type TransactionLog struct {
-	start_time  TimeMs
-	end_time    TimeMs
-	start_price int
-	bit         Board
-	bit_start   Board
-	bit_delta   Records
-	ask         Board
-	ask_start   Board
-	ask_delta   Records
-	buy         Records
-	sell        Records
+	start_time   TimeMs
+	end_time     TimeMs
+	start_price  int64
+	bit          Board
+	bit_start    Board
+	bit_delta    Records
+	ask          Board
+	ask_start    Board
+	ask_delta    Records
+	buy          Records
+	sell         Records
+	current_time TimeMs
 }
 
 func (c *TransactionLog) init() {
@@ -183,6 +195,7 @@ func (c *TransactionLog) init() {
 	c.start_time = 0
 	c.end_time = 0
 	c.start_price = 0
+	c.current_time = 0
 }
 
 func (c *TransactionLog) reset() {
@@ -239,7 +252,7 @@ func (c TransactionLog) load(stream io.ReadCloser) TransactionLog {
 	// start_price       int
 	start_price := uint64(c.start_price)
 	binary.Read(stream, binary.LittleEndian, &start_price)
-	c.start_price = int(start_price)
+	c.start_price = int64(start_price)
 
 	// bit       Board
 	c.bit = c.bit.load(stream, c.start_price)
@@ -273,7 +286,7 @@ func (rec TransactionRecord) to_string() string {
 	return s
 }
 
-func (c *TransactionLog) set(action int, time TimeMs, seq int, price int, vol int) {
+func (c *TransactionLog) set(action int, time TimeMs, seq int, price uint64, vol uint64) {
 	if c.start_time == 0 {
 		c.start_time = time
 	}
@@ -285,10 +298,10 @@ func (c *TransactionLog) set(action int, time TimeMs, seq int, price int, vol in
 		c.bit.init()
 		c.ask.init()
 	case UPDATE_BUY:
-		c.bit.set(price, vol)
+		c.bit.set(int(price), int(vol))
 		c.bit_delta = append(c.bit_delta, Record{time: time, price: price, vol: vol})
 	case UPDATE_SELL:
-		c.ask.set(price, vol)
+		c.ask.set(int(price), int(vol))
 		c.ask_delta = append(c.ask_delta, Record{time: time, price: price, vol: vol})
 	case TRADE_BUY:
 		c.buy = append(c.buy, Record{time: time, price: price, vol: vol})
@@ -317,15 +330,21 @@ func load_log(file string) {
 */
 
 func load_log(file string) TransactionLog {
+	compress := strings.HasSuffix(file, ".gz")
+
 	f, err := os.Open(file)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	gzipfile, _ := gzip.NewReader(f)
-
-	r := csv.NewReader(gzipfile)
+	var r *csv.Reader
+	if compress {
+		gzipfile, _ := gzip.NewReader(f)
+		r = csv.NewReader(gzipfile)
+	} else {
+		r = csv.NewReader(f)
+	}
 
 	var transaction TransactionLog
 	transaction.init()
@@ -373,10 +392,10 @@ func load_log(file string) TransactionLog {
 			}
 		}
 
-		transaction.set(record.action, record.time, record.seq, record.price, record.vol)
+		transaction.set(record.action, record.time, record.seq, uint64(record.price), uint64(record.vol))
 	}
 
-	transaction.start_price = record.price
+	transaction.start_price = int64(record.price)
 
 	fmt.Println(transaction.start_time)
 	fmt.Println(record.time)

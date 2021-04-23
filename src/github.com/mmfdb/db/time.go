@@ -47,3 +47,7 @@ func YYMMDDhms(yy, mm, dd, h, m, s int) time.Time {
 	t := time.Date(yy, time.Month(mm), dd, h, m, s, 0, time.UTC)
 	return t
 }
+
+func to_time_ms(time time.Time) TimeMs {
+	return TimeMs(int(time.UnixNano() / 1000000))
+}
