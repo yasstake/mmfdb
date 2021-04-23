@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"testing"
 	"time"
 )
 
@@ -191,52 +190,47 @@ func (board Board) depth() int {
 	return len(board)
 }
 
-func TestReadWriteTransaction(t *testing.T) {
-	tran := Transaction{1, 2, 3, 4}
-
-	wf, _ := os.Create("/tmp/test2.bin")
-	tran.save(wf)
-	wf.Close()
-
-	wf2, _ := os.Open("/tmp/test2.bin")
-	var r2 Transaction
-	r2 = r2.load(wf2)
-
-	fmt.Println(tran, r2)
+type Chunk struct {
+	bit_board Board
+	ask_board Board
+	trans     Transactions
 }
 
-func TestReadWriteTransactions(t *testing.T) {
-	tran1 := Transaction{1, 2, 3, 4}
-	tran2 := Transaction{2, 2, 3, 4}
-	tran3 := Transaction{3, 2, 3, 4}
-
-	tr := Transactions{tran1, tran2, tran3}
-
-	wf, _ := os.Create("/tmp/test2.bin")
-	tr.save(wf)
-	wf.Close()
-
-	wf2, _ := os.Open("/tmp/test2.bin")
-	var r2 Transactions
-	r2 = r2.load(wf2)
-
-	fmt.Println(tr, r2)
+func (c *Chunk) init() {
+	c.bit_board.init()
+	c.ask_board.init()
+	c.trans.init()
 }
 
-/*
-func open_gzip(file string) io.ReadCloser {
-	f, err := os.Open(file)
+func (c *Chunk) append(r Transaction) {
+	c.trans = append(c.trans, r)
+}
+
+func (c *Chunk) dump() {
+	time := date_time(c.trans[0].Time_stamp)
+	stream := create_db_file(time)
+	defer stream.Close()
+
+	c.bit_board.save(stream)
+	c.ask_board.save(stream)
+	c.trans.save(stream)
+}
+
+func (c *Chunk) load_file(path string) {
+	stream, err := os.Open(path)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("cannot open file", path, err)
 	}
-	gzipreader, _ := gzip.NewReader(f)
 
-	return gzipreader
+	gzip_reader, _ := gzip.NewReader(stream)
+	defer gzip_reader.Close()
+
+	c.bit_board.load(gzip_reader)
+	c.ask_board.load(gzip_reader)
+	c.trans.load(gzip_reader)
 }
-*/
 
-func load_log(file string) (tr Transactions) {
-	tr = make([]Transaction, 0, 1000000)
+func load_log(file string) (chunk Chunk) {
 	f, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
@@ -260,11 +254,7 @@ func load_log(file string) (tr Transactions) {
 	var ask_board Board
 	ask_board.init()
 
-	var bit_board_snapshot Board
-	bit_board_snapshot.init()
-	var ask_board_snapshot Board
-	ask_board_snapshot.init()
-	tr.init()
+	chunk.init()
 
 	for {
 		row, err := r.Read()
@@ -295,7 +285,6 @@ func load_log(file string) (tr Transactions) {
 		if record.Action == PARTIAL {
 			bit_board.init()
 			ask_board.init()
-			tr.init()
 		} else if record.Action == UPDATE_BUY || record.Action == UPDATE_SELL {
 			time := date_time(record.Time_stamp)
 			min := time.Minute()
@@ -304,22 +293,23 @@ func load_log(file string) (tr Transactions) {
 			if min != last_min {
 				if sec <= 1 {
 					last_min = min
-					tr_len := len(tr)
+					tr_len := len(chunk.trans)
 					if 100 < tr_len {
-						fmt.Println(date_time(tr[0].Time_stamp))
-						fmt.Println(date_time(tr[len(tr)-1].Time_stamp))
+						fmt.Println(date_time(chunk.trans[0].Time_stamp))
+						fmt.Println(date_time(chunk.trans[len(chunk.trans)-1].Time_stamp))
 
-						duration := tr[tr_len-1].Time_stamp - tr[0].Time_stamp
+						duration := chunk.trans[tr_len-1].Time_stamp - chunk.trans[0].Time_stamp
 
 						if 30*1000000 <= duration {
-							fmt.Println("DUMP", len(tr), bit_board_snapshot.depth(), ask_board_snapshot.depth())
+							chunk.dump()
+							fmt.Println("DUMP", len(chunk.trans), chunk.bit_board.depth(), chunk.ask_board.depth())
 						}
 					}
 				}
 
-				bit_board_snapshot = bit_board.copy() // CopyBuffer
-				ask_board_snapshot = ask_board.copy()
-				tr.init()
+				chunk.bit_board = bit_board.copy() // CopyBuffer
+				chunk.ask_board = ask_board.copy()
+				chunk.trans.init()
 			}
 
 			if record.Action == UPDATE_BUY {
@@ -330,8 +320,8 @@ func load_log(file string) (tr Transactions) {
 				log.Fatal("Unknown action")
 			}
 		}
-		tr = append(tr, record)
+		chunk.append(record)
 	}
 
-	return tr
+	return chunk
 }
