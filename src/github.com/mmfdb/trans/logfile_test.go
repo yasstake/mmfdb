@@ -66,6 +66,10 @@ func TestParseFilePath(t *testing.T) {
 	fmt.Println(path, time)
 }
 
+func TestTransactionInfoString(t *testing.T) {
+	fmt.Println(t1.info_string())
+}
+
 func TestTransactionInit(t *testing.T) {
 	fmt.Println(tr)
 	tr.init()
@@ -132,10 +136,72 @@ func TestSaveAndLoadBoard(t *testing.T) {
 	}
 }
 
+func TestLoadTime(t *testing.T) {
+	var c Chunk
+	time := date_time(1613864762187260 * 1000)
+	fmt.Println(time.String())
+	c.load_time(time)
+	fmt.Println(c.info_string())
+}
+
+func TestLoadAndOhlcv(t *testing.T) {
+	var c Chunk
+	s_time := date_time(1613864762187260 * 1000)
+	e_time := date_time(1613864762187260*1000 + 30_000_000_000)
+
+	ohlcv, err := c.ohlcv(s_time, e_time)
+	fmt.Println(ohlcv, err)
+
+	c.load_time(s_time)
+	ohlcv, err = c.ohlcv(s_time, e_time)
+	fmt.Println(ohlcv, err)
+}
+
+func TestLoadAndOhlcvSec(t *testing.T) {
+	var c Chunk
+	s_time := date_time(1613864762187260 * 1000)
+	c.load_time(s_time)
+	ohlcvs := c.ohlcvSec()
+	fmt.Println(ohlcvs)
+}
+
+func TestOhlcv(t *testing.T) {
+	o1 := Ohlcv{1, 2, 3, 4, 5, 6, 0}
+	o2 := Ohlcv{7, 8, 9, 10, 11, 12, 0}
+	target := Ohlcv{1, 8, 3, 10, 16, 18, 34}
+
+	o3 := o1.add(o2)
+
+	if o3 != target {
+		t.Error("Does not match", o3, target)
+	}
+	fmt.Println(o3)
+	var o4 Ohlcv
+	fmt.Println(o4)
+}
+
+func TestOhlcv2(t *testing.T) {
+	var o1 Ohlcv
+	o1.init()
+
+	o1.sell(100, 1)
+	fmt.Println(o1)
+
+	o1.buy(101, 2)
+	fmt.Println(o1)
+
+	o1.buy(101, 2)
+	fmt.Println(o1)
+
+	o1.sell(100, 1)
+	fmt.Println(o1)
+}
+
 func TestLoadLog(t *testing.T) {
 	tr := load_log("../../../../DATA/bb2.log")
 
 	fmt.Println(tr)
+	fmt.Println(tr.info_string())
 }
 
 func TestLoadLogBig(t *testing.T) {

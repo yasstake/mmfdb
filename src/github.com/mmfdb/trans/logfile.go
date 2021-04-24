@@ -31,7 +31,9 @@ const TRADE_SELL_LIQUID = 7
 // action, time, 0,, volume,
 const OPEN_INTEREST = 10
 
-const DB_ROOT = "/tmp"
+const DB_ROOT = "/tmp/BITLOG"
+
+const SEC_IN_NS = 1_000_000_000 // ns = sec
 
 func date_time(nsec int64) time.Time {
 	t := time.Unix(0, nsec).UTC()
@@ -50,6 +52,11 @@ func make_path(time time.Time) (dir, path string) {
 	file_name := fmt.Sprintf("%02d-%02d.log.gz", h, m)
 
 	return dir_name, file_name
+}
+
+func make_full_path(time time.Time) (path string) {
+	dir_name, file_name := make_path(time)
+	return filepath.Join(DB_ROOT, dir_name, file_name)
 }
 
 func create_db_file(time time.Time) (db_file io.WriteCloser) {
@@ -86,6 +93,15 @@ type Transaction struct {
 	Time_stamp int64
 	Price      int32
 	Volume     int32
+}
+
+func (c *Transaction) info_string() (result string) {
+	result += date_time(c.Time_stamp).String()
+	result += "{Action:" + strconv.Itoa(int(c.Action)) + "}"
+	result += "{Price:" + strconv.Itoa(int(c.Price)) + "}"
+	result += "{vol:" + strconv.Itoa(int(c.Volume)) + "}"
+
+	return result
 }
 
 func (t *Transaction) save(stream io.WriteCloser) {
@@ -196,6 +212,24 @@ type Chunk struct {
 	trans     Transactions
 }
 
+func (c Chunk) info_string() string {
+	bit_len := len(c.bit_board)
+	ask_len := len(c.ask_board)
+	trans_len := len(c.trans)
+
+	start := c.trans[0]
+	end := c.trans[trans_len-1]
+
+	result :=
+		"Start->" + start.info_string() +
+			" End->" + end.info_string() +
+			" BIT->" + strconv.Itoa(bit_len) +
+			" ASK->" + strconv.Itoa(ask_len) +
+			" Trans->" + strconv.Itoa(trans_len)
+
+	return result
+}
+
 func (c *Chunk) init() {
 	c.bit_board.init()
 	c.ask_board.init()
@@ -228,6 +262,147 @@ func (c *Chunk) load_file(path string) {
 	c.bit_board.load(gzip_reader)
 	c.ask_board.load(gzip_reader)
 	c.trans.load(gzip_reader)
+}
+
+func (c *Chunk) load_time(time time.Time) {
+	path := make_full_path(time)
+	c.load_file(path)
+}
+
+type Ohlcv struct {
+	open     int
+	high     int
+	low      int
+	close    int
+	buy_vol  int
+	sell_vol int
+	vol      int
+}
+
+func (c *Ohlcv) init() {
+	c.open = 0
+	c.high = 0
+	c.low = 0
+	c.close = 0
+	c.buy_vol = 0
+	c.sell_vol = 0
+	c.vol = 0
+}
+
+func (c *Ohlcv) add(ohlcv Ohlcv) (result Ohlcv) {
+	result.open = c.open
+
+	if c.high < ohlcv.high {
+		result.high = ohlcv.high
+	} else {
+		result.high = c.high
+	}
+
+	if c.low < ohlcv.low {
+		result.low = c.low
+	} else {
+		result.low = ohlcv.low
+	}
+
+	result.close = ohlcv.close
+
+	result.buy_vol += c.buy_vol + ohlcv.buy_vol
+	result.sell_vol += c.sell_vol + ohlcv.sell_vol
+
+	result.vol = result.buy_vol + result.sell_vol
+
+	return result
+}
+
+func (c *Ohlcv) buy(price int, volume int) {
+	c.sell_buy(price, volume, true)
+}
+
+func (c *Ohlcv) sell(price int, volume int) {
+	c.sell_buy(price, volume, false)
+}
+
+func (c *Ohlcv) sell_buy(price int, volume int, buy bool) {
+	if c.open == 0 {
+		c.open = price
+	}
+
+	if c.high < price || c.high == 0 {
+		c.high = price
+	}
+
+	if price < c.low || c.low == 0 {
+		c.low = price
+	}
+
+	c.close = price
+
+	if buy {
+		c.buy_vol += volume
+		c.vol += volume
+	} else {
+		c.sell_vol += volume
+		c.vol += volume
+	}
+}
+
+func (c *Chunk) ohlcv(from time.Time, end time.Time) (result Ohlcv, err bool) {
+	result.init()
+
+	for i, _ := range c.trans {
+
+		time_stamp := date_time(c.trans[i].Time_stamp)
+
+		if time_stamp.Before(from) {
+			continue
+		}
+
+		if end.Before(time_stamp) {
+			break
+		}
+
+		action := c.trans[i].Action
+
+		if action == TRADE_BUY || action == TRADE_BUY_LIQUID {
+			result.buy(int(c.trans[i].Price), int(c.trans[i].Volume))
+		} else if action == TRADE_SELL || action == TRADE_SELL_LIQUID {
+			result.sell(int(c.trans[i].Price), int(c.trans[i].Volume))
+		}
+	}
+
+	if result.open == 0 {
+		err = true
+	}
+
+	return result, err
+}
+
+func (c *Chunk) ohlcvSec() (result []Ohlcv) {
+	start_time := int64((c.trans[0].Time_stamp+SEC_IN_NS/10)/SEC_IN_NS) * SEC_IN_NS
+	current_end := start_time + SEC_IN_NS
+
+	var ohlcv Ohlcv
+	trans_len := len(c.trans)
+
+	for i := 0; i < trans_len; i++ {
+		time_stamp := c.trans[i].Time_stamp
+
+		if time_stamp <= current_end || trans_len-i < 100 {
+			action := c.trans[i].Action
+
+			if action == TRADE_BUY || action == TRADE_BUY_LIQUID {
+				ohlcv.buy(int(c.trans[i].Price), int(c.trans[i].Volume))
+			} else if action == TRADE_SELL || action == TRADE_SELL_LIQUID {
+				ohlcv.sell(int(c.trans[i].Price), int(c.trans[i].Volume))
+			}
+		} else {
+			current_end += SEC_IN_NS
+			result = append(result, ohlcv)
+			ohlcv.init()
+		}
+	}
+
+	return result
 }
 
 func load_log(file string) (chunk Chunk) {
@@ -277,7 +452,8 @@ func load_log(file string) (chunk Chunk) {
 				r, _ := strconv.Atoi(v)
 				record.Price = int32(r)
 			case 4: // volume
-				r, _ := strconv.Atoi(v)
+				// TODO: FIX omit under floating point
+				r, _ := strconv.ParseFloat(v, 64)
 				record.Volume = int32(r)
 			}
 		}
@@ -295,14 +471,11 @@ func load_log(file string) (chunk Chunk) {
 					last_min = min
 					tr_len := len(chunk.trans)
 					if 100 < tr_len {
-						fmt.Println(date_time(chunk.trans[0].Time_stamp))
-						fmt.Println(date_time(chunk.trans[len(chunk.trans)-1].Time_stamp))
-
 						duration := chunk.trans[tr_len-1].Time_stamp - chunk.trans[0].Time_stamp
 
 						if 30*1000000 <= duration {
 							chunk.dump()
-							fmt.Println("DUMP", len(chunk.trans), chunk.bit_board.depth(), chunk.ask_board.depth())
+							fmt.Println("DUMP", chunk.info_string())
 						}
 					}
 				}
@@ -320,7 +493,12 @@ func load_log(file string) (chunk Chunk) {
 				log.Fatal("Unknown action")
 			}
 		}
+
 		chunk.append(record)
+
+		if record.Action == TRADE_BUY {
+			fmt.Println(record)
+		}
 	}
 
 	return chunk
