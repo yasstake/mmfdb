@@ -382,6 +382,7 @@ func (c *Chunk) ohlcvSec() (result []Ohlcv) {
 	current_end := start_time + SEC_IN_NS
 
 	var ohlcv Ohlcv
+	ohlcv.init()
 	trans_len := len(c.trans)
 
 	for i := 0; i < trans_len; i++ {
@@ -401,8 +402,60 @@ func (c *Chunk) ohlcvSec() (result []Ohlcv) {
 			ohlcv.init()
 		}
 	}
+	if ohlcv.open != 0 {
+		result = append(result, ohlcv)
+	}
 
 	return result
+}
+
+func (c *Chunk) order_book(time time.Time) (bit, ask Board, err bool) {
+	bit = nil
+	ask = nil
+
+	trans_len := len(c.trans)
+	t := time.UnixNano()
+
+	// if chunk does not have data
+	if trans_len == 0 {
+		return nil, nil, true
+	}
+
+	// check out of chunk time frame(with 100ms allowance)
+	if t < c.trans[0].Time_stamp-SEC_IN_NS/10 ||
+		c.trans[trans_len-1].Time_stamp+SEC_IN_NS/10 < t {
+		return nil, nil, true
+	}
+
+	// first setup initial
+	bit = c.bit_board.copy()
+	ask = c.ask_board.copy()
+
+	// apply transactions until time
+	for i := 0; i < trans_len; i++ {
+		time_stamp := c.trans[i].Time_stamp
+		// TODO: Consider action (execute and board update)
+		// action := c.trans[i].Action
+
+		// exceed time
+		if t < time_stamp {
+			break
+		}
+
+		action := int(c.trans[i].Action)
+
+		if action == UPDATE_BUY {
+			price := int(c.trans[i].Price)
+			volume := int(c.trans[i].Volume)
+			bit.set(price, volume)
+		} else if action == UPDATE_SELL {
+			price := int(c.trans[i].Price)
+			volume := int(c.trans[i].Volume)
+			ask.set(price, volume)
+		}
+	}
+
+	return bit, ask, true
 }
 
 func load_log(file string) (chunk Chunk) {

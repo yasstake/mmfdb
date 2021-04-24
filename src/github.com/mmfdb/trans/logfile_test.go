@@ -162,7 +162,7 @@ func TestLoadAndOhlcvSec(t *testing.T) {
 	s_time := date_time(1613864762187260 * 1000)
 	c.load_time(s_time)
 	ohlcvs := c.ohlcvSec()
-	fmt.Println(ohlcvs)
+	fmt.Println(ohlcvs, len(ohlcvs))
 }
 
 func TestOhlcv(t *testing.T) {
@@ -195,6 +195,35 @@ func TestOhlcv2(t *testing.T) {
 
 	o1.sell(100, 1)
 	fmt.Println(o1)
+}
+
+func TestBoardLoad(t *testing.T) {
+	time := 1613864762187260 * 1000
+	s_time := date_time(int64(time))
+
+	var c Chunk
+	c.load_time(s_time)
+
+	// if out of chunk err(before)
+	book_time := date_time(int64(time - 5*SEC_IN_NS))
+	bit, ask, err := c.order_book(book_time)
+	if !err {
+		t.Error("must be null", bit, ask, err)
+	}
+
+	book_time = date_time(int64(time + 61*SEC_IN_NS))
+	bit, ask, err = c.order_book(book_time)
+	if !err {
+		t.Error("must be null", bit, ask, err)
+	}
+
+	book_time = date_time(int64(time + 5*SEC_IN_NS))
+	bit, ask, err = c.order_book(book_time)
+	fmt.Println(bit, ask, err)
+
+	book_time = date_time(int64(time + 10*SEC_IN_NS))
+	bit, ask, err = c.order_book(book_time)
+	fmt.Println(bit, ask, err)
 }
 
 func TestLoadLog(t *testing.T) {
