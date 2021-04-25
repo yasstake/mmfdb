@@ -270,6 +270,7 @@ func (c *Chunk) load_time(time time.Time) {
 }
 
 type Ohlcv struct {
+	time     int64
 	open     int
 	high     int
 	low      int
@@ -280,6 +281,7 @@ type Ohlcv struct {
 }
 
 func (c *Ohlcv) init() {
+	c.time = 0
 	c.open = 0
 	c.high = 0
 	c.low = 0
@@ -290,6 +292,7 @@ func (c *Ohlcv) init() {
 }
 
 func (c *Ohlcv) add(ohlcv Ohlcv) (result Ohlcv) {
+	result.time = ohlcv.time
 	result.open = c.open
 
 	if c.high < ohlcv.high {
@@ -314,15 +317,17 @@ func (c *Ohlcv) add(ohlcv Ohlcv) (result Ohlcv) {
 	return result
 }
 
-func (c *Ohlcv) buy(price int, volume int) {
-	c.sell_buy(price, volume, true)
+func (c *Ohlcv) buy(time int64, price int, volume int) {
+	c.sell_buy(time, price, volume, true)
 }
 
-func (c *Ohlcv) sell(price int, volume int) {
-	c.sell_buy(price, volume, false)
+func (c *Ohlcv) sell(time int64, price int, volume int) {
+	c.sell_buy(time, price, volume, false)
 }
 
-func (c *Ohlcv) sell_buy(price int, volume int, buy bool) {
+func (c *Ohlcv) sell_buy(time int64, price int, volume int, buy bool) {
+	c.time = time
+
 	if c.open == 0 {
 		c.open = price
 	}
@@ -364,9 +369,9 @@ func (c *Chunk) ohlcv(from time.Time, end time.Time) (result Ohlcv, err bool) {
 		action := c.trans[i].Action
 
 		if action == TRADE_BUY || action == TRADE_BUY_LIQUID {
-			result.buy(int(c.trans[i].Price), int(c.trans[i].Volume))
+			result.buy(c.trans[i].Time_stamp, int(c.trans[i].Price), int(c.trans[i].Volume))
 		} else if action == TRADE_SELL || action == TRADE_SELL_LIQUID {
-			result.sell(int(c.trans[i].Price), int(c.trans[i].Volume))
+			result.sell(c.trans[i].Time_stamp, int(c.trans[i].Price), int(c.trans[i].Volume))
 		}
 	}
 
@@ -392,9 +397,9 @@ func (c *Chunk) ohlcvSec() (result []Ohlcv) {
 			action := c.trans[i].Action
 
 			if action == TRADE_BUY || action == TRADE_BUY_LIQUID {
-				ohlcv.buy(int(c.trans[i].Price), int(c.trans[i].Volume))
+				ohlcv.buy(c.trans[i].Time_stamp, int(c.trans[i].Price), int(c.trans[i].Volume))
 			} else if action == TRADE_SELL || action == TRADE_SELL_LIQUID {
-				ohlcv.sell(int(c.trans[i].Price), int(c.trans[i].Volume))
+				ohlcv.sell(c.trans[i].Time_stamp, int(c.trans[i].Price), int(c.trans[i].Volume))
 			}
 		} else {
 			current_end += SEC_IN_NS
@@ -456,6 +461,42 @@ func (c *Chunk) order_book(time time.Time) (bit, ask Board, err bool) {
 	}
 
 	return bit, ask, true
+}
+
+func (c *Chunk) open_interest(time time.Time) (oi int, err bool) {
+	trans_len := len(c.trans)
+	t := time.UnixNano()
+
+	// if chunk does not have data
+	if trans_len == 0 {
+		return 0, true
+	}
+
+	// check out of chunk time frame(with 100ms allowance)
+	if t < c.trans[0].Time_stamp-SEC_IN_NS/10 ||
+		c.trans[trans_len-1].Time_stamp+SEC_IN_NS/10 < t {
+		return 0, true
+	}
+
+	for i := 0; i < trans_len; i++ {
+		time_stamp := c.trans[i].Time_stamp
+		// TODO: Consider action (execute and board update)
+		// action := c.trans[i].Action
+
+		// exceed time
+		if t < time_stamp {
+			break
+		}
+
+		action := int(c.trans[i].Action)
+
+		if action == OPEN_INTEREST {
+			fmt.Println(c.trans[i].info_string())
+			return int(c.trans[i].Volume), false
+		}
+	}
+
+	return 0, true
 }
 
 func load_log(file string) (chunk Chunk) {

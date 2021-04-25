@@ -166,9 +166,9 @@ func TestLoadAndOhlcvSec(t *testing.T) {
 }
 
 func TestOhlcv(t *testing.T) {
-	o1 := Ohlcv{1, 2, 3, 4, 5, 6, 0}
-	o2 := Ohlcv{7, 8, 9, 10, 11, 12, 0}
-	target := Ohlcv{1, 8, 3, 10, 16, 18, 34}
+	o1 := Ohlcv{100, 1, 2, 3, 4, 5, 6, 0}
+	o2 := Ohlcv{200, 7, 8, 9, 10, 11, 12, 0}
+	target := Ohlcv{200, 1, 8, 3, 10, 16, 18, 34}
 
 	o3 := o1.add(o2)
 
@@ -184,16 +184,16 @@ func TestOhlcv2(t *testing.T) {
 	var o1 Ohlcv
 	o1.init()
 
-	o1.sell(100, 1)
+	o1.sell(1000, 100, 1)
 	fmt.Println(o1)
 
-	o1.buy(101, 2)
+	o1.buy(1000, 101, 2)
 	fmt.Println(o1)
 
-	o1.buy(101, 2)
+	o1.buy(1000, 101, 2)
 	fmt.Println(o1)
 
-	o1.sell(100, 1)
+	o1.sell(1000, 100, 1)
 	fmt.Println(o1)
 }
 
@@ -224,6 +224,17 @@ func TestBoardLoad(t *testing.T) {
 	book_time = date_time(int64(time + 10*SEC_IN_NS))
 	bit, ask, err = c.order_book(book_time)
 	fmt.Println(bit, ask, err)
+}
+
+func TestOpenInterest(t *testing.T) {
+	time := 1613864762187260 * 1000
+	s_time := date_time(int64(time + 5*SEC_IN_NS))
+
+	var c Chunk
+	c.load_time(s_time)
+
+	oi, err := c.open_interest(s_time)
+	fmt.Println(oi, err)
 }
 
 func TestLoadLog(t *testing.T) {
